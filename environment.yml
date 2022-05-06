@@ -1,0 +1,13 @@
+name: overcast
+channels:
+  - pytorch
+  - defaults
+dependencies:
+  - black>=19.1
+  - pip>=21.2
+  - python>=3.9
+  - jupyter>=1.0.0
+  - pytorch=1.10.0
+  - cudatoolkit=10.2
+  - pip:
+      - --use-feature=in-tree-build .

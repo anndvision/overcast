@@ -3,7 +3,7 @@ import math
 import torch
 from torch import nn
 
-from overcast.models.modules import dense
+from overcast.modules import dense
 
 
 class GroupPreactivation(nn.Module):

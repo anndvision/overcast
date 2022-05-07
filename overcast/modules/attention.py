@@ -3,8 +3,8 @@ import torch
 
 from torch import nn
 
-from overcast.models.modules import dense
-from overcast.models.modules.spectral_norm import spectral_norm_fc
+from overcast.modules import dense
+from overcast.modules.spectral_norm import spectral_norm_fc
 
 
 class Attention(nn.Module):

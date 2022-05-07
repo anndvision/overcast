@@ -1,8 +1,8 @@
 import torch
 from torch import distributions, nn
 
-from overcast.models.modules import group
-from overcast.models.modules import conditional
+from overcast.modules import group
+from overcast.modules import conditional
 
 
 class Normal(nn.Module):

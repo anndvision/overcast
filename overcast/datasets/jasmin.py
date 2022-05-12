@@ -213,12 +213,14 @@ class JASMINDaily(data.Dataset):
         self.split = split
         self.pad = pad
         # Bootstrap sampling
-        self.sample_index = np.arange(len(self.data))
         if bootstrap:
-            self.sample_index = np.random.choice(self.sample_index, size=len(self.data))
-            self.data = [self.data[j] for j in self.sample_index]
-            self.treatments = [self.treatments[j] for j in self.sample_index]
-            self.targets = [self.targets[j] for j in self.sample_index]
+            num_days = len(self.data)
+            sample_index = np.arange(num_days)
+            sample_index = np.random.choice(sample_index, size=num_days)
+            self.data = [self.data[j] for j in sample_index]
+            self.treatments = [self.treatments[j] for j in sample_index]
+            self.targets = [self.targets[j] for j in sample_index]
+            self.position = [self.position[j] for j in sample_index]
 
     @property
     def data_frame(self):

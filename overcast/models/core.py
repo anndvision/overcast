@@ -88,12 +88,7 @@ class PyTorchModel(BaseModel):
         raise NotImplementedError()
 
     def preprocess(self, batch):
-        batch = (
-            [x.to(self.device) for x in batch]
-            if isinstance(batch, list)
-            else batch.to(self.device)
-        )
-        return batch
+        raise NotImplementedError()
 
     def fit(self, train_dataset, tune_dataset):
         train_loader = data.DataLoader(
@@ -132,11 +127,7 @@ class PyTorchModel(BaseModel):
                 self.evaluator,
                 event_name=engine.Events.EPOCH_COMPLETED,
                 tag="validation",
-                metric_names=[
-                    "loss",
-                    "loss_y",
-                    "loss_t",
-                ],  # TODO: generalize metric names
+                metric_names=list(self.metrics.keys()),  # TODO: generalize metric names
                 global_step_transform=handlers.global_step_from_engine(self.trainer),
             )
         # Train
@@ -219,14 +210,20 @@ class PyTorchModel(BaseModel):
             return
         self.logger.info("Loading saved checkpoint {}".format(p))
         checkpoint = torch.load(p)
-        self.networt.load_state_dict(checkpoint["network"])
+        self.network.load_state_dict(checkpoint["network"])
         self.optimizer.load_state_dict(checkpoint["optimizer"])
         self.trainer.state = checkpoint["engine"]
 
+    def predict_mean(self, dataset):
+        raise NotImplementedError()
 
-class TwoTaskPyTorchModel(PyTorchModel):
+    def sample(self, dataset, num_samples):
+        raise NotImplementedError()
+
+
+class AuxiliaryTaskPyTorchModel(PyTorchModel):
     def __init__(self, job_dir, learning_rate, batch_size, epochs, num_workers, seed):
-        super(TwoTaskPyTorchModel, self).__init__(
+        super(AuxiliaryTaskPyTorchModel, self).__init__(
             job_dir=job_dir,
             learning_rate=learning_rate,
             batch_size=batch_size,
@@ -234,37 +231,37 @@ class TwoTaskPyTorchModel(PyTorchModel):
             num_workers=num_workers,
             seed=seed,
         )
-        self._network_task = None
-        self._optimizer_task = None
+        self._network_aux = None
+        self._optimizer_aux = None
 
     @property
-    def network_task(self):
-        return self._network_task
+    def network_aux(self):
+        return self._network_aux
 
-    @network_task.setter
-    def network_task(self, value):
-        self._network_task = value
+    @network_aux.setter
+    def network_aux(self, value):
+        self._network_aux = value
 
     @property
-    def optimizer_task(self):
-        return self._optimizer_task
+    def optimizer_aux(self):
+        return self._optimizer_aux
 
-    @optimizer_task.setter
-    def optimizer_task(self, value):
-        self._optimizer_task = value
+    @optimizer_aux.setter
+    def optimizer_aux(self, value):
+        self._optimizer_aux = value
 
     def update(self):
-        super(TwoTaskPyTorchModel, self).update()
+        super(AuxiliaryTaskPyTorchModel, self).update()
         if not tune.is_session_enabled():
             self.best_state.update(
                 {
-                    "network_task": copy.deepcopy(self.network_task.state_dict()),
-                    "optimizer_task": copy.deepcopy(self.optimizer_task.state_dict()),
+                    "network_aux": copy.deepcopy(self.network_aux.state_dict()),
+                    "optimizer_aux": copy.deepcopy(self.optimizer_aux.state_dict()),
                 }
             )
 
     def load(self):
-        super(TwoTaskPyTorchModel, self).load()
+        super(AuxiliaryTaskPyTorchModel, self).load()
         if tune.is_session_enabled():
             with tune.checkpoint_dir(step=self.trainer.state.epoch) as checkpoint_dir:
                 p = os.path.join(checkpoint_dir, "checkpoint.pt")
@@ -278,5 +275,11 @@ class TwoTaskPyTorchModel(PyTorchModel):
             return
         self.logger.info("Loading saved checkpoint {}".format(p))
         checkpoint = torch.load(p)
-        self.network_task.load_state_dict(checkpoint["network_task"])
-        self.optimizer_task.load_state_dict(checkpoint["optimizer_task"])
+        self.network_aux.load_state_dict(checkpoint["network_aux"])
+        self.optimizer_aux.load_state_dict(checkpoint["optimizer_aux"])
+
+    def predict_aux_mean(self, dataset):
+        raise NotImplementedError()
+
+    def sample_aux(self, dataset, num_samples):
+        raise NotImplementedError()

@@ -175,7 +175,7 @@ class GroupLinear(nn.Module):
     def forward(self, inputs: list[torch.Tensor]) -> torch.Tensor:
         x, g = inputs
         w = torch.matmul(
-            g, self.weight.view(self.num_groups, self.dim_input * self.dim_inpu),
+            g, self.weight.view(self.num_groups, self.dim_input * self.dim_output),
         ).reshape(-1, self.dim_input, self.dim_output)
         return torch.bmm(x.unsqueeze(1), w).squeeze(1) + torch.matmul(g, self.bias)
 

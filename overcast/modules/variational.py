@@ -26,12 +26,12 @@ class GroupNormal(nn.Module):
     ):
         super(GroupNormal, self).__init__()
         self.mu = group.GroupLinear(
-            in_features=dim_input, out_features=dim_output, num_groups=groups, bias=True
+            dim_input=dim_input, dim_output=dim_output, num_groups=groups, bias=True
         )
         self.sigma = nn.Sequential(
             group.GroupLinear(
-                in_features=dim_input,
-                out_features=dim_output,
+                dim_input=dim_input,
+                dim_output=dim_output,
                 num_groups=groups,
                 bias=True,
             ),
@@ -93,23 +93,23 @@ class GroupGMM(nn.Module):
     def __init__(self, num_components, dim_input, dim_output, groups):
         super(GroupGMM, self).__init__()
         self.mu = group.GroupLinear(
-            in_features=dim_input,
-            out_features=dim_output * num_components,
+            dim_input=dim_input,
+            dim_output=dim_output * num_components,
             num_groups=groups,
             bias=True,
         )
         self.sigma = nn.Sequential(
             group.GroupLinear(
-                in_features=dim_input,
-                out_features=dim_output * num_components,
+                dim_input=dim_input,
+                dim_output=dim_output * num_components,
                 num_groups=groups,
                 bias=True,
             ),
             nn.Softplus(),
         )
         self.pi = group.GroupLinear(
-            in_features=dim_input,
-            out_features=num_components,
+            dim_input=dim_input,
+            dim_output=num_components,
             num_groups=groups,
             bias=True,
         )
@@ -147,18 +147,18 @@ class ConditionalGMM(nn.Module):
     ):
         super(ConditionalGMM, self).__init__()
         self.mu = conditional.ConditionalLinear(
-            in_features=dim_input,
+            dim_input=dim_input,
             condition_features=dim_condition,
-            out_features=dim_output * num_components,
+            dim_output=dim_output * num_components,
             num_basis=num_basis,
             basis_features=dim_basis,
             bias=True,
         )
         self.sigma = nn.Sequential(
             conditional.ConditionalLinear(
-                in_features=dim_input,
+                dim_input=dim_input,
                 condition_features=dim_condition,
-                out_features=dim_output * num_components,
+                dim_output=dim_output * num_components,
                 num_basis=num_basis,
                 basis_features=dim_basis,
                 bias=True,
@@ -166,9 +166,9 @@ class ConditionalGMM(nn.Module):
             nn.Softplus(),
         )
         self.pi = conditional.ConditionalLinear(
-            in_features=dim_input,
+            dim_input=dim_input,
             condition_features=dim_condition,
-            out_features=num_components,
+            dim_output=num_components,
             num_basis=num_basis,
             basis_features=dim_basis,
             bias=True,

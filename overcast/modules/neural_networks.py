@@ -21,10 +21,9 @@ class AppendedDensityNetwork(nn.Module):
         self.feature_extractor = feature_extractor
         self.density_estimator = density_estimator
 
-    def forward(self, inputs):
-        x, t = inputs
-        phi = self.feature_extractor(x)
-        phi = torch.cat([phi, t], dim=-1)
+    def forward(self, inputs, treatments):
+        phi = self.feature_extractor(inputs)
+        phi = torch.cat([phi, treatments], dim=-1)
         return self.density_estimator(phi)
 
 
@@ -40,8 +39,7 @@ class TarNet(nn.Module):
         self.hypotheses = hypotheses
         self.density_estimator = density_estimator
 
-    def forward(self, inputs):
-        x, t = inputs
-        phi = self.feature_extractor(x)
-        phi = self.hypotheses([phi, t])
-        return self.density_estimator([phi, t])
+    def forward(self, inputs, treatments):
+        phi = self.feature_extractor(inputs)
+        phi = self.hypotheses([phi, treatments])
+        return self.density_estimator([phi, treatments])

@@ -27,5 +27,5 @@ setup(
         "scikit-learn==0.24.2",
         "pytorch-ignite==0.4.7",
     ],
-    entry_points={"console_scripts": ["clouds=overcast.main:cli"],},
+    entry_points={"console_scripts": ["overcast=overcast.main:cli"],},
 )

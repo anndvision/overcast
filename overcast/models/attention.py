@@ -412,6 +412,45 @@ class _TreatmentEffectAttentionNetwork(core.AuxiliaryTaskPyTorchModel):
             capo = dataset.targets_xfm.inverse_transform(capo)
         return capo
 
+    def sample_po(self, dataset, treatment, num_samples=100):
+        dl = data.DataLoader(
+            dataset,
+            batch_size=1,
+            shuffle=False,
+            drop_last=False,
+            num_workers=self.num_workers,
+        )
+        y = []
+        self.network.eval()
+        with torch.no_grad():
+            for batch in dl:
+                (
+                    inputs,
+                    treatments,
+                    _,
+                    position,
+                    inputs_mask,
+                    outputs_mask,
+                ) = self.preprocess(batch)
+                t = self.preprocess_treatment(
+                    treatment=treatment,
+                    treatments=treatments,
+                    xfm=dataset.treatments_xfm,
+                )
+                y_density = self.network_y(
+                    inputs=inputs,
+                    treatments=t,
+                    position=position,
+                    inputs_mask=inputs_mask,
+                    outputs_mask=outputs_mask,
+                )
+                y.append(y_density.sample(torch.Size([num_samples])))
+        if dataset.targets_xfm is not None:
+            y = dataset.targets_xfm.inverse_transform(
+                torch.cat(y, dim=1).to("cpu").numpy()
+            )
+        return y
+
 
 class DiscreteTreatmentAttentionNetwork(_TreatmentEffectAttentionNetwork):
     def __init__(

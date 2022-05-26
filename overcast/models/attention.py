@@ -374,7 +374,7 @@ class _TreatmentEffectAttentionNetwork(core.AuxiliaryTaskPyTorchModel):
             )
         return t
 
-    def predict_capo(self, dataset, treatment):
+    def predict_capo(self, dataset, treatment, batch_size=None):
         dl = data.DataLoader(
             dataset,
             batch_size=1,
@@ -399,7 +399,7 @@ class _TreatmentEffectAttentionNetwork(core.AuxiliaryTaskPyTorchModel):
                     treatments=treatments,
                     xfm=dataset.treatments_xfm,
                 )
-                y_density = self.network_y(
+                y_density = self.network(
                     inputs=inputs,
                     treatments=t,
                     position=position,
@@ -437,7 +437,7 @@ class _TreatmentEffectAttentionNetwork(core.AuxiliaryTaskPyTorchModel):
                     treatments=treatments,
                     xfm=dataset.treatments_xfm,
                 )
-                y_density = self.network_y(
+                y_density = self.network(
                     inputs=inputs,
                     treatments=t,
                     position=position,
@@ -531,7 +531,7 @@ class DiscreteTreatmentAttentionNetwork(_TreatmentEffectAttentionNetwork):
         return t
 
     def predict_capo_interval(
-        self, dataset, treatment, log_lambda, num_samples=100,
+        self, dataset, treatment, log_lambda, num_samples=100, batch_size=None,
     ):
         dl = data.DataLoader(
             dataset,
@@ -572,7 +572,7 @@ class DiscreteTreatmentAttentionNetwork(_TreatmentEffectAttentionNetwork):
                 )  # [num_samples, batch_size, dy]
                 mu = y_density.mean.unsqueeze(0)  # [1, batch_size, dy]
                 pi = (
-                    self.network_t(
+                    self.network_aux(
                         inputs=inputs,
                         outputs=treatments,
                         position=position,
@@ -695,7 +695,7 @@ class _ContinousTreatmentAttentionNetwork(_TreatmentEffectAttentionNetwork):
         return treatment * torch.ones_like(treatments)
 
     def predict_capo_interval(
-        self, dataset, treatment, log_lambda, num_samples=100,
+        self, dataset, treatment, log_lambda, num_samples=100, batch_size=None,
     ):
         dl = data.DataLoader(
             dataset,

@@ -229,7 +229,7 @@ def jasmin(
 @click.option(
     "--num-bins",
     type=int,
-    default=2,
+    default=1,
     help="Number of bins to discretize treatment variable, default=2",
 )
 @click.option(
@@ -562,10 +562,10 @@ def discrete_treatment_nn(
 )
 def appended_treatment_nn(
     context,
-    num_components_outcome,
-    num_components_treatment,
     dim_hidden,
     depth,
+    num_components_outcome,
+    num_components_treatment,
     negative_slope,
     beta,
     layer_norm,
@@ -612,6 +612,137 @@ def appended_treatment_nn(
             @ray.remote(num_gpus=context.obj.get("gpu_per_model"))
             def trainer(**kwargs):
                 func = workflows.neural_network.appended_treatment.train(**kwargs)
+                return func
+
+            results = []
+            for ensemble_id in range(ensemble_size):
+                results.append(
+                    trainer.remote(
+                        config=context.obj,
+                        experiment_dir=context.obj.get("experiment_dir"),
+                        ensemble_id=ensemble_id,
+                    )
+                )
+            ray.get(results)
+
+
+@cli.command("appended-treatment-transformer")
+@click.pass_context
+@click.option("--dim-hidden", default=256, type=int, help="num neurons, default=512")
+@click.option(
+    "--depth", default=3, type=int, help="depth of feature extractor, default=3"
+)
+@click.option(
+    "--num-components-outcome",
+    default=24,
+    type=int,
+    help="num mixture components for outcome density estimator, default=22",
+)
+@click.option(
+    "--num-components-treatment",
+    default=24,
+    type=int,
+    help="num mixture components for treatment density estimator, default=14",
+)
+@click.option(
+    "--num-heads", default=4, type=int, help="multi-head attention parameter, default=2"
+)
+@click.option(
+    "--negative-slope",
+    default=0.01,
+    type=float,
+    help="negative slope of leaky relu, default=0.01",
+)
+@click.option(
+    "--beta", default=0.0, type=float, help="double robust regularizer, default=0.0"
+)
+@click.option(
+    "--layer-norm", default=False, type=bool, help="use layer norm, default=False"
+)
+@click.option(
+    "--dropout-rate", default=0.5, type=float, help="dropout rate, default=0.25"
+)
+@click.option(
+    "--spectral-norm",
+    default=0.0,
+    type=float,
+    help="Spectral normalization coefficient. If 0.0 do not use spectral norm, default=0.0",
+)
+@click.option(
+    "--learning-rate",
+    default=2e-4,
+    type=float,
+    help="learning rate for gradient descent, default=1e-4",
+)
+@click.option(
+    "--batch-size",
+    default=32,
+    type=int,
+    help="number of examples to read during each training step, default=2048",
+)
+@click.option(
+    "--epochs", type=int, default=500, help="number of training epochs, default=500"
+)
+@click.option(
+    "--ensemble-size",
+    type=int,
+    default=10,
+    help="number of models in ensemble, default=10",
+)
+def appended_treatment_an(
+    context,
+    dim_hidden,
+    depth,
+    num_components_outcome,
+    num_components_treatment,
+    num_heads,
+    negative_slope,
+    beta,
+    layer_norm,
+    dropout_rate,
+    spectral_norm,
+    learning_rate,
+    batch_size,
+    epochs,
+    ensemble_size,
+):
+    context.obj.update(
+        {
+            "experiment_dir": str(
+                Path(context.obj["experiment_dir"]) / "appended-treatment-transformer"
+            )
+        }
+    )
+    if context.obj["mode"] == "tune":
+        context.obj.update(
+            {"epochs": epochs, "ensemble_size": ensemble_size,}
+        )
+        workflows.transformer.appended_treatment.tune_func(config=context.obj)
+    else:
+        context.obj.update(
+            {
+                "num_components_outcome": num_components_outcome,
+                "num_components_treatment": num_components_treatment,
+                "dim_hidden": dim_hidden,
+                "depth": depth,
+                "num_heads": num_heads,
+                "negative_slope": negative_slope,
+                "beta": beta,
+                "layer_norm": layer_norm,
+                "dropout_rate": dropout_rate,
+                "spectral_norm": spectral_norm,
+                "learning_rate": learning_rate,
+                "batch_size": batch_size,
+                "epochs": epochs,
+                "ensemble_size": ensemble_size,
+            }
+        )
+
+        if context.obj["mode"] == "train":
+
+            @ray.remote(num_gpus=context.obj.get("gpu_per_model"),)
+            def trainer(**kwargs):
+                func = workflows.transformer.appended_treatment.train(**kwargs)
                 return func
 
             results = []

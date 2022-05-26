@@ -202,6 +202,119 @@ def jasmin(
     )
 
 
+@cli.command("jasmin-daily")
+@click.pass_context
+@click.option(
+    "--root", type=str, required=True, help="location of dataset",
+)
+@click.option(
+    "--covariates",
+    "-c",
+    type=str,
+    multiple=True,
+    default=["RH900", "RH850", "RH700", "LTS", "EIS", "w500", "whoi_sst",],
+    help="covariate keys",
+)
+@click.option(
+    "--treatment", "-t", type=str, default="tot_aod", help="treatment key",
+)
+@click.option(
+    "--outcomes",
+    "-o",
+    type=str,
+    multiple=True,
+    default=["l_re", "liq_pc", "cod", "cwp"],
+    help="outcome keys",
+)
+@click.option(
+    "--num-bins",
+    type=int,
+    default=2,
+    help="Number of bins to discretize treatment variable, default=2",
+)
+@click.option(
+    "--filter-aod",
+    type=bool,
+    default=True,
+    help="Filter out aod values less than 0.7 and greater than 1",
+)
+@click.option(
+    "--filter-precip", type=bool, default=True, help="Filter out raining clouds",
+)
+@click.option(
+    "--bootstrap",
+    type=bool,
+    default=False,
+    help="bootstrap sample the training dataset, default=False",
+)
+def jasmin_daily(
+    context,
+    root,
+    covariates,
+    treatment,
+    outcomes,
+    num_bins,
+    filter_aod,
+    filter_precip,
+    bootstrap,
+):
+    outcomes = list(outcomes)
+    covariates = list(covariates)
+    job_dir = Path(context.obj.get("job_dir"))
+    dataset_name = "jasmin-daily"
+    dataset_folder = dataset_name + f"_treatment-{treatment}_covariates"
+    for c in covariates:
+        dataset_folder += f"-{c}"
+    dataset_folder += "_outcomes"
+    for o in outcomes:
+        dataset_folder += f"-{o}"
+    dataset_folder += f"_bins-{num_bins}"
+    dataset_folder += f"_bs-{bootstrap}"
+    experiment_dir = job_dir / dataset_folder
+    context.obj.update(
+        {
+            "dataset_name": dataset_name,
+            "experiment_dir": str(experiment_dir),
+            "ds_train": {
+                "root": root,
+                "split": "train",
+                "x_vars": covariates,
+                "t_var": treatment,
+                "y_vars": outcomes,
+                "t_bins": num_bins,
+                "filter_aod": filter_aod,
+                "filter_precip": filter_precip,
+                "pad": True,
+                "bootstrap": bootstrap,
+            },
+            "ds_valid": {
+                "root": root,
+                "split": "valid",
+                "x_vars": covariates,
+                "t_var": treatment,
+                "y_vars": outcomes,
+                "t_bins": num_bins,
+                "filter_aod": filter_aod,
+                "filter_precip": filter_precip,
+                "pad": True,
+                "bootstrap": False,
+            },
+            "ds_test": {
+                "root": root,
+                "split": "test",
+                "x_vars": covariates,
+                "t_var": treatment,
+                "y_vars": outcomes,
+                "t_bins": num_bins,
+                "filter_aod": filter_aod,
+                "filter_precip": filter_precip,
+                "pad": False,
+                "bootstrap": False,
+            },
+        }
+    )
+
+
 @cli.command("dose-response")
 @click.pass_context
 @click.option(
@@ -447,12 +560,6 @@ def discrete_treatment_nn(
     default=10,
     help="number of models in ensemble, default=10",
 )
-@click.option(
-    "--treatment-resolution",
-    type=int,
-    default=32,
-    help="resolution of dose response curve prediction, default=32",
-)
 def appended_treatment_nn(
     context,
     num_components_outcome,
@@ -468,7 +575,6 @@ def appended_treatment_nn(
     batch_size,
     epochs,
     ensemble_size,
-    treatment_resolution,
 ):
     context.obj.update(
         {

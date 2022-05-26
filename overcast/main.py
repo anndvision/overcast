@@ -38,6 +38,7 @@ def train(
         num_gpus=context.obj["n_gpu"],
         dashboard_host="127.0.0.1",
         ignore_reinit_error=True,
+        object_store_memory=8000000000,
     )
     context.obj.update(
         {
@@ -384,11 +385,6 @@ def discrete_treatment_nn(
                     )
                 )
             ray.get(results)
-        # elif context.obj["mode"] == "predict":
-
-        #     workflows.prediction.neural_network.discrete_treatment.predict(
-        #         config=context.obj, experiment_dir=context.obj.get("experiment_dir")
-        #     )
 
 
 @cli.command("appended-treatment-nn")
@@ -507,7 +503,7 @@ def appended_treatment_nn(
 
         if context.obj["mode"] == "train":
 
-            @ray.remote(num_gpus=context.obj.get("gpu_per_model"),)
+            @ray.remote(num_gpus=context.obj.get("gpu_per_model"))
             def trainer(**kwargs):
                 func = workflows.neural_network.appended_treatment.train(**kwargs)
                 return func
@@ -522,10 +518,3 @@ def appended_treatment_nn(
                     )
                 )
             ray.get(results)
-        # elif context.obj["mode"] == "predict":
-
-        #     workflows.prediction.neural_network.appended_treatment.predict(
-        #         config=context.obj,
-        #         experiment_dir=context.obj.get("experiment_dir"),
-        #         treatment_resolution=treatment_resolution,
-        #     )

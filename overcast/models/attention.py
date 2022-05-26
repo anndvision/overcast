@@ -412,6 +412,249 @@ class _TreatmentEffectAttentionNetwork(core.AuxiliaryTaskPyTorchModel):
             capo = dataset.targets_xfm.inverse_transform(capo)
         return capo
 
+
+class DiscreteTreatmentAttentionNetwork(_TreatmentEffectAttentionNetwork):
+    def __init__(
+        self,
+        job_dir,
+        dim_input,
+        dim_treatment,
+        dim_output,
+        num_components,
+        dim_hidden,
+        depth,
+        num_heads,
+        negative_slope,
+        beta,
+        layer_norm,
+        spectral_norm,
+        dropout_rate,
+        num_examples,
+        learning_rate,
+        batch_size,
+        epochs,
+        patience,
+        num_workers,
+        seed,
+    ):
+        super(DiscreteTreatmentAttentionNetwork, self).__init__(
+            job_dir=job_dir,
+            dim_input=dim_input,
+            dim_output=dim_output,
+            dim_hidden=dim_hidden,
+            depth=depth,
+            num_heads=num_heads,
+            negative_slope=negative_slope,
+            beta=beta,
+            layer_norm=layer_norm,
+            spectral_norm=spectral_norm,
+            dropout_rate=dropout_rate,
+            learning_rate=learning_rate,
+            batch_size=batch_size,
+            epochs=epochs,
+            patience=patience,
+            num_workers=num_workers,
+            seed=seed,
+        )
+
+        self.network_aux = modules.DensityAttentionNetwork(
+            feature_extractor=self.feature_extractor,
+            density_estimator=modules.Categorical(
+                dim_input=dim_hidden, dim_output=dim_treatment,
+            ),
+        )
+        self.network = modules.TarAttentionNetwork(
+            feature_extractor=self.feature_extractor,
+            hypotheses=modules.GroupIdentity(),
+            density_estimator=modules.GroupGMM(
+                num_components=num_components,
+                dim_input=dim_hidden,
+                dim_output=dim_output,
+                groups=dim_treatment,
+            ),
+        )
+        self.optimizer_aux = optim.Adam(
+            params=self.network_aux.parameters(),
+            lr=self.learning_rate,
+            weight_decay=(0.5 * (1 - dropout_rate)) / num_examples,
+        )
+        self.optimizer = optim.Adam(
+            params=self.network.parameters(),
+            lr=self.learning_rate,
+            weight_decay=(0.5 * (1 - dropout_rate)) / num_examples,
+        )
+        self.network_aux.to(self.device)
+        self.network.to(self.device)
+
+    def preprocess_treatment(self, treatment, treatments, xfm=None):
+        t = torch.zeros_like(treatments)
+        t[:, :, treatment] = 1
+        return t
+
+    def predict_capo_interval(
+        self, dataset, treatment, log_lambda, num_samples=100,
+    ):
+        dl = data.DataLoader(
+            dataset,
+            batch_size=1,
+            shuffle=False,
+            drop_last=False,
+            num_workers=self.num_workers,
+        )
+        _lambda = torch.exp(torch.tensor([log_lambda])).to(self.device) + utils.eps
+        # predict and sample
+        upper, lower = [], []
+        self.network.eval()
+        self.network_aux.eval()
+        for batch in dl:
+            with torch.no_grad():
+                (
+                    inputs,
+                    treatments,
+                    _,
+                    position,
+                    inputs_mask,
+                    outputs_mask,
+                ) = self.preprocess(batch)
+                t = self.preprocess_treatment(
+                    treatment=treatment,
+                    treatments=treatments,
+                    xfm=dataset.treatments_xfm,
+                )
+                y_density = self.network(
+                    inputs=inputs,
+                    treatments=t,
+                    position=position,
+                    inputs_mask=inputs_mask,
+                    outputs_mask=outputs_mask,
+                )
+                y_samples = y_density.sample(
+                    torch.Size([num_samples])
+                )  # [num_samples, batch_size, dy]
+                mu = y_density.mean.unsqueeze(0)  # [1, batch_size, dy]
+                pi = (
+                    self.network_t(
+                        inputs=inputs,
+                        outputs=treatments,
+                        position=position,
+                        inputs_mask=inputs_mask,
+                        outputs_mask=outputs_mask,
+                    )
+                    .probs[:, treatment]
+                    .unsqueeze(0)
+                    .unsqueeze(-1)
+                )
+                # get alpha prime
+                alpha = utils.alpha_func(pi, _lambda)
+                beta = utils.beta_func(pi, _lambda)
+                alpha_prime = alpha / (beta - alpha)
+                # sweep over upper bounds
+                r = y_samples - mu  # [num_samples, batch_size, dy]
+                d = y_samples - y_samples.unsqueeze(
+                    1
+                )  # [num_samples, num_samples, batch_size, dy]
+                h_u = torch.heaviside(
+                    d, torch.tensor([1.0], device=self.device)
+                )  # [num_samples, num_samples, batch_size, dy]
+                numer_upper = (h_u * r.unsqueeze(0)).mean(
+                    1
+                )  # [num_samples, batch_size, dy]
+                denom_upper = (
+                    h_u.mean(1) + alpha_prime + utils.eps
+                )  # [num_samples, batch_size, dy]
+                upper_batch = (
+                    mu + numer_upper / denom_upper
+                )  # [num_samples, batch_size, dy]
+                upper_batch = upper_batch.max(0)[0]  # [batch_size, dy]
+                upper.append(upper_batch)
+                # sweep over lower bounds
+                h_l = torch.heaviside(
+                    -d, torch.tensor([1.0], device=self.device)
+                )  # [num_samples, num_samples, batch_size, dy]
+                numer_lower = (h_l * r.unsqueeze(0)).mean(
+                    1
+                )  # [num_samples, batch_size, dy]
+                denom_lower = (
+                    h_l.mean(1) + alpha_prime + utils.eps
+                )  # [num_samples, batch_size, dy]
+                lower_batch = (
+                    mu + numer_lower / denom_lower
+                )  # [num_samples, batch_size, dy]
+                lower_batch = lower_batch.min(0)[0]  # [batch_size, dy]
+                lower.append(lower_batch)
+        # post process
+        upper = torch.cat(upper, dim=0).to("cpu").numpy()
+        lower = torch.cat(lower, dim=0).to("cpu").numpy()
+        if dataset.targets_xfm is not None:
+            upper = dataset.targets_xfm.inverse_transform(upper)
+            lower = dataset.targets_xfm.inverse_transform(lower)
+        return lower, upper
+
+
+class _ContinousTreatmentAttentionNetwork(_TreatmentEffectAttentionNetwork):
+    def __init__(
+        self,
+        job_dir,
+        dim_input,
+        dim_treatment,
+        dim_output,
+        num_components_treatment,
+        dim_hidden,
+        depth,
+        num_heads,
+        negative_slope,
+        beta,
+        layer_norm,
+        spectral_norm,
+        dropout_rate,
+        num_examples,
+        learning_rate,
+        batch_size,
+        epochs,
+        patience,
+        num_workers,
+        seed,
+    ):
+        super(_ContinousTreatmentAttentionNetwork, self).__init__(
+            job_dir=job_dir,
+            dim_input=dim_input,
+            dim_output=dim_output,
+            dim_hidden=dim_hidden,
+            depth=depth,
+            num_heads=num_heads,
+            negative_slope=negative_slope,
+            beta=beta,
+            layer_norm=layer_norm,
+            spectral_norm=spectral_norm,
+            dropout_rate=dropout_rate,
+            learning_rate=learning_rate,
+            batch_size=batch_size,
+            epochs=epochs,
+            patience=patience,
+            num_workers=num_workers,
+            seed=seed,
+        )
+        self.network_aux = modules.DensityAttentionNetwork(
+            feature_extractor=self.feature_extractor,
+            density_estimator=modules.GMM(
+                num_components=num_components_treatment,
+                dim_input=dim_hidden,
+                dim_output=dim_treatment,
+            ),
+        )
+        self.optimizer_aux = optim.Adam(
+            params=self.network_aux.parameters(),
+            lr=self.learning_rate,
+            weight_decay=(0.5 * (1 - dropout_rate)) / num_examples,
+        )
+        self.network_aux.to(self.device)
+
+    def preprocess_treatment(self, treatment, treatments, xfm=None):
+        treatment = (
+            xfm.transform([[treatment]]).item() if xfm is not None else treatment
+        )
+        return treatment * torch.ones_like(treatments)
+
     def predict_capo_interval(
         self, dataset, treatment, log_lambda, num_samples=100,
     ):
@@ -495,150 +738,6 @@ class _TreatmentEffectAttentionNetwork(core.AuxiliaryTaskPyTorchModel):
             upper = dataset.targets_xfm.inverse_transform(upper)
             lower = dataset.targets_xfm.inverse_transform(lower)
         return lower, upper
-
-
-class DiscreteTreatmentAttentionNetwork(_TreatmentEffectAttentionNetwork):
-    def __init__(
-        self,
-        job_dir,
-        dim_input,
-        dim_treatment,
-        dim_output,
-        num_components,
-        dim_hidden,
-        depth,
-        num_heads,
-        negative_slope,
-        beta,
-        layer_norm,
-        spectral_norm,
-        dropout_rate,
-        num_examples,
-        learning_rate,
-        batch_size,
-        epochs,
-        patience,
-        num_workers,
-        seed,
-    ):
-        super(DiscreteTreatmentAttentionNetwork, self).__init__(
-            job_dir=job_dir,
-            dim_input=dim_input,
-            dim_output=dim_output,
-            dim_hidden=dim_hidden,
-            depth=depth,
-            num_heads=num_heads,
-            negative_slope=negative_slope,
-            beta=beta,
-            layer_norm=layer_norm,
-            spectral_norm=spectral_norm,
-            dropout_rate=dropout_rate,
-            learning_rate=learning_rate,
-            batch_size=batch_size,
-            epochs=epochs,
-            patience=patience,
-            num_workers=num_workers,
-            seed=seed,
-        )
-
-        self.network_aux = modules.DensityAttentionNetwork(
-            feature_extractor=self.feature_extractor,
-            density_estimator=modules.Categorical(
-                dim_input=dim_hidden, dim_output=dim_treatment,
-            ),
-        )
-        self.network = modules.TarAttentionNetwork(
-            feature_extractor=self.feature_extractor,
-            hypotheses=modules.GroupIdentity(),
-            density_estimator=modules.GroupGMM(
-                num_components=num_components,
-                dim_input=dim_hidden,
-                dim_output=dim_output,
-                groups=dim_treatment,
-            ),
-        )
-        self.optimizer_aux = optim.Adam(
-            params=self.network_aux.parameters(),
-            lr=self.learning_rate,
-            weight_decay=(0.5 * (1 - dropout_rate)) / num_examples,
-        )
-        self.optimizer = optim.Adam(
-            params=self.network.parameters(),
-            lr=self.learning_rate,
-            weight_decay=(0.5 * (1 - dropout_rate)) / num_examples,
-        )
-        self.network_aux.to(self.device)
-        self.network.to(self.device)
-
-    def preprocess_treatment(self, treatment, treatments, xfm=None):
-        t = torch.zeros_like(treatments)
-        t[:, :, treatment] = 1
-        return t
-
-
-class _ContinousTreatmentAttentionNetwork(_TreatmentEffectAttentionNetwork):
-    def __init__(
-        self,
-        job_dir,
-        dim_input,
-        dim_treatment,
-        dim_output,
-        num_components_treatment,
-        dim_hidden,
-        depth,
-        num_heads,
-        negative_slope,
-        beta,
-        layer_norm,
-        spectral_norm,
-        dropout_rate,
-        num_examples,
-        learning_rate,
-        batch_size,
-        epochs,
-        patience,
-        num_workers,
-        seed,
-    ):
-        super(_ContinousTreatmentAttentionNetwork, self).__init__(
-            job_dir=job_dir,
-            dim_input=dim_input,
-            dim_output=dim_output,
-            dim_hidden=dim_hidden,
-            depth=depth,
-            num_heads=num_heads,
-            negative_slope=negative_slope,
-            beta=beta,
-            layer_norm=layer_norm,
-            spectral_norm=spectral_norm,
-            dropout_rate=dropout_rate,
-            learning_rate=learning_rate,
-            batch_size=batch_size,
-            epochs=epochs,
-            patience=patience,
-            num_workers=num_workers,
-            seed=seed,
-        )
-        self.network_aux = modules.DensityAttentionNetwork(
-            feature_extractor=self.feature_extractor,
-            density_estimator=modules.GMM(
-                num_components=num_components_treatment,
-                dim_input=dim_hidden,
-                dim_output=dim_treatment,
-            ),
-        )
-        self.optimizer_aux = optim.Adam(
-            params=self.network_aux.parameters(),
-            lr=self.learning_rate,
-            weight_decay=(0.5 * (1 - dropout_rate)) / num_examples,
-        )
-        self.network_aux.to(self.device)
-
-    def preprocess_treatment(self, treatment, treatments, xfm=None):
-        treatment = (
-            xfm.transform([[treatment]]).item() if xfm is not None else treatment
-        )
-        return treatment * torch.ones_like(treatments)
 
 
 class AppendedTreatmentAttentionNetwork(_ContinousTreatmentAttentionNetwork):

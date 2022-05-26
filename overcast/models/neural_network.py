@@ -260,6 +260,30 @@ class _TreatmentEffectNeuralNetwork(core.AuxiliaryTaskPyTorchModel):
             )
         return y
 
+    def sample_po(self, dataset, treatment, num_samples):
+        dl = data.DataLoader(
+            dataset,
+            batch_size=2 * self.batch_size,
+            shuffle=False,
+            drop_last=False,
+            num_workers=self.num_workers,
+        )
+        y = []
+        self.network.eval()
+        with torch.no_grad():
+            for batch in dl:
+                inputs, treatments, _ = self.preprocess(batch)
+                y.append(
+                    self.network(inputs=inputs, treatments=treatments).sample(
+                        torch.Size([num_samples])
+                    )
+                )
+        if dataset.targets_xfm is not None:
+            y = dataset.targets_xfm.inverse_transform(
+                torch.cat(y, dim=0).to("cpu").numpy()
+            )
+        return y
+
     def predict_aux_mean(self, dataset):
         dl = data.DataLoader(
             dataset,
@@ -300,10 +324,10 @@ class _TreatmentEffectNeuralNetwork(core.AuxiliaryTaskPyTorchModel):
             )
         return t
 
-    def predict_capo(self, dataset, treatment):
+    def predict_capo(self, dataset, treatment, batch_size=None):
         dl = data.DataLoader(
             dataset,
-            batch_size=2 * self.batch_size,
+            batch_size=2 * self.batch_size if batch_size is None else batch_size,
             shuffle=False,
             drop_last=False,
             num_workers=self.num_workers,
@@ -324,9 +348,7 @@ class _TreatmentEffectNeuralNetwork(core.AuxiliaryTaskPyTorchModel):
             capo = dataset.targets_xfm.inverse_transform(capo)
         return capo
 
-    def predict_capo_interval(
-        self, dataset, treatment, log_lambda, num_samples=100, batch_size=None,
-    ):
+    def sample_po(self, dataset, treatment, num_samples=100, batch_size=None):
         dl = data.DataLoader(
             dataset,
             batch_size=2 * self.batch_size if batch_size is None else batch_size,
@@ -334,74 +356,26 @@ class _TreatmentEffectNeuralNetwork(core.AuxiliaryTaskPyTorchModel):
             drop_last=False,
             num_workers=self.num_workers,
         )
-        _lambda = torch.exp(torch.tensor([log_lambda])).to(self.device) + utils.eps
-        # predict and sample
-        upper, lower = [], []
+        y = []
         self.network.eval()
-        self.network_aux.eval()
-        for batch in dl:
-            with torch.no_grad():
+        with torch.no_grad():
+            for batch in dl:
                 inputs, treatments, _ = self.preprocess(batch)
                 t = self.preprocess_treatment(
                     treatment=treatment,
                     treatments=treatments,
                     xfm=dataset.treatments_xfm,
                 )
-                y_density = self.network(inputs=inputs, treatments=t)
-                y_samples = y_density.sample(
-                    torch.Size([num_samples])
-                )  # [num_samples, batch_size, dy]
-                mu = y_density.mean.unsqueeze(0)  # [1, batch_size, dy]
-                t_density = self.network_aux(inputs)
-                pi = (
-                    torch.exp(t_density.log_prob(t)).unsqueeze(0).unsqueeze(-1)
-                )  # [1, batch_size, 1]
-                pi = torch.clip(pi, utils.eps, 1 - utils.eps)
-                # get alpha prime
-                alpha = utils.alpha_func(pi, _lambda)
-                beta = utils.beta_func(pi, _lambda)
-                alpha_prime = alpha / (beta - alpha)
-                # sweep over upper bounds
-                r = y_samples - mu  # [num_samples, batch_size, dy]
-                d = y_samples - y_samples.unsqueeze(
-                    1
-                )  # [num_samples, num_samples, batch_size, dy]
-                h_u = torch.heaviside(
-                    d, torch.tensor([1.0], device=self.device)
-                )  # [num_samples, num_samples, batch_size, dy]
-                numer_upper = (h_u * r.unsqueeze(0)).mean(
-                    1
-                )  # [num_samples, batch_size, dy]
-                denom_upper = (
-                    h_u.mean(1) + alpha_prime + utils.eps
-                )  # [num_samples, batch_size, dy]
-                upper_batch = (
-                    mu + numer_upper / denom_upper
-                )  # [num_samples, batch_size, dy]
-                upper_batch = upper_batch.max(0)[0]  # [batch_size, dy]
-                upper.append(upper_batch)
-                # sweep over lower bounds
-                h_l = torch.heaviside(
-                    -d, torch.tensor([1.0], device=self.device)
-                )  # [num_samples, num_samples, batch_size, dy]
-                numer_lower = (h_l * r.unsqueeze(0)).mean(
-                    1
-                )  # [num_samples, batch_size, dy]
-                denom_lower = (
-                    h_l.mean(1) + alpha_prime + utils.eps
-                )  # [num_samples, batch_size, dy]
-                lower_batch = (
-                    mu + numer_lower / denom_lower
-                )  # [num_samples, batch_size, dy]
-                lower_batch = lower_batch.min(0)[0]  # [batch_size, dy]
-                lower.append(lower_batch)
-        # post process
-        upper = torch.cat(upper, dim=0).to("cpu").numpy()
-        lower = torch.cat(lower, dim=0).to("cpu").numpy()
+                y.append(
+                    self.network(inputs=inputs, treatments=t).sample(
+                        torch.Size([num_samples])
+                    )
+                )
         if dataset.targets_xfm is not None:
-            upper = dataset.targets_xfm.inverse_transform(upper)
-            lower = dataset.targets_xfm.inverse_transform(lower)
-        return lower, upper
+            y = dataset.targets_xfm.inverse_transform(
+                torch.cat(y, dim=1).to("cpu").numpy()
+            )
+        return y
 
 
 class DiscreteTreatmentNeuralNetwork(_TreatmentEffectNeuralNetwork):
@@ -486,6 +460,85 @@ class DiscreteTreatmentNeuralNetwork(_TreatmentEffectNeuralNetwork):
         t = torch.zeros_like(treatments)
         t[:, treatment] = 1
         return t
+
+    def predict_capo_interval(
+        self, dataset, treatment, log_lambda, num_samples=100, batch_size=None,
+    ):
+        dl = data.DataLoader(
+            dataset,
+            batch_size=2 * self.batch_size if batch_size is None else batch_size,
+            shuffle=False,
+            drop_last=False,
+            num_workers=self.num_workers,
+        )
+        _lambda = torch.exp(torch.tensor([log_lambda])).to(self.device) + utils.eps
+        # predict and sample
+        upper, lower = [], []
+        self.network.eval()
+        self.network_aux.eval()
+        for batch in dl:
+            with torch.no_grad():
+                inputs, treatments, _ = self.preprocess(batch)
+                t = self.preprocess_treatment(
+                    treatment=treatment,
+                    treatments=treatments,
+                    xfm=dataset.treatments_xfm,
+                )
+                y_density = self.network(inputs=inputs, treatments=t)
+                y_samples = y_density.sample(
+                    torch.Size([num_samples])
+                )  # [num_samples, batch_size, dy]
+                mu = y_density.mean.unsqueeze(0)  # [1, batch_size, dy]
+                t_density = self.network_aux(inputs)
+                pi = (
+                    torch.exp(t_density.log_prob(t)).unsqueeze(0).unsqueeze(-1)
+                )  # [1, batch_size, 1]
+                pi = torch.clip(pi, utils.eps, 1 - utils.eps)
+                # get alpha prime
+                alpha = utils.alpha_func(pi, _lambda)
+                beta = utils.beta_func(pi, _lambda)
+                alpha_prime = alpha / (beta - alpha)
+                # sweep over upper bounds
+                r = y_samples - mu  # [num_samples, batch_size, dy]
+                d = y_samples - y_samples.unsqueeze(
+                    1
+                )  # [num_samples, num_samples, batch_size, dy]
+                h_u = torch.heaviside(
+                    d, torch.tensor([1.0], device=self.device)
+                )  # [num_samples, num_samples, batch_size, dy]
+                numer_upper = (h_u * r.unsqueeze(0)).mean(
+                    1
+                )  # [num_samples, batch_size, dy]
+                denom_upper = (
+                    h_u.mean(1) + alpha_prime + utils.eps
+                )  # [num_samples, batch_size, dy]
+                upper_batch = (
+                    mu + numer_upper / denom_upper
+                )  # [num_samples, batch_size, dy]
+                upper_batch = upper_batch.max(0)[0]  # [batch_size, dy]
+                upper.append(upper_batch)
+                # sweep over lower bounds
+                h_l = torch.heaviside(
+                    -d, torch.tensor([1.0], device=self.device)
+                )  # [num_samples, num_samples, batch_size, dy]
+                numer_lower = (h_l * r.unsqueeze(0)).mean(
+                    1
+                )  # [num_samples, batch_size, dy]
+                denom_lower = (
+                    h_l.mean(1) + alpha_prime + utils.eps
+                )  # [num_samples, batch_size, dy]
+                lower_batch = (
+                    mu + numer_lower / denom_lower
+                )  # [num_samples, batch_size, dy]
+                lower_batch = lower_batch.min(0)[0]  # [batch_size, dy]
+                lower.append(lower_batch)
+        # post process
+        upper = torch.cat(upper, dim=0).to("cpu").numpy()
+        lower = torch.cat(lower, dim=0).to("cpu").numpy()
+        if dataset.targets_xfm is not None:
+            upper = dataset.targets_xfm.inverse_transform(upper)
+            lower = dataset.targets_xfm.inverse_transform(lower)
+        return lower, upper
 
 
 class _ContinousTreatmentNeuralNetwork(_TreatmentEffectNeuralNetwork):
@@ -638,3 +691,75 @@ class AppendedTreatmentNeuralNetwork(_ContinousTreatmentNeuralNetwork):
             weight_decay=(0.5 * (1 - dropout_rate)) / num_examples,
         )
         self.network.to(self.device)
+
+    def predict_capo_interval(
+        self, dataset, treatment, log_lambda, num_samples=100, batch_size=None,
+    ):
+        dl = data.DataLoader(
+            dataset,
+            batch_size=2 * self.batch_size if batch_size is None else batch_size,
+            shuffle=False,
+            drop_last=False,
+            num_workers=self.num_workers,
+        )
+        _lambda = torch.exp(torch.tensor([log_lambda])).to(self.device) + utils.eps
+        alpha_prime = 1 / (_lambda ** 2 - 1)
+        # predict and sample
+        upper, lower = [], []
+        self.network.eval()
+        self.network_aux.eval()
+        for batch in dl:
+            with torch.no_grad():
+                inputs, treatments, _ = self.preprocess(batch)
+                t = self.preprocess_treatment(
+                    treatment=treatment,
+                    treatments=treatments,
+                    xfm=dataset.treatments_xfm,
+                )
+                y_density = self.network(inputs=inputs, treatments=t)
+                y_samples = y_density.sample(
+                    torch.Size([num_samples])
+                )  # [num_samples, batch_size, dy]
+                mu = y_density.mean.unsqueeze(0)  # [1, batch_size, dy]
+                t_density = self.network_aux(inputs)
+                # sweep over upper bounds
+                r = y_samples - mu  # [num_samples, batch_size, dy]
+                d = y_samples - y_samples.unsqueeze(
+                    1
+                )  # [num_samples, num_samples, batch_size, dy]
+                h_u = torch.heaviside(
+                    d, torch.tensor([1.0], device=self.device)
+                )  # [num_samples, num_samples, batch_size, dy]
+                numer_upper = (h_u * r.unsqueeze(0)).mean(
+                    1
+                )  # [num_samples, batch_size, dy]
+                denom_upper = (
+                    h_u.mean(1) + alpha_prime + utils.eps
+                )  # [num_samples, batch_size, dy]
+                upper_batch = (
+                    mu + numer_upper / denom_upper
+                )  # [num_samples, batch_size, dy]
+                upper_batch = upper_batch.max(0)[0]  # [batch_size, dy]
+                upper.append(upper_batch)
+                # sweep over lower bounds
+                h_l = torch.heaviside(
+                    -d, torch.tensor([1.0], device=self.device)
+                )  # [num_samples, num_samples, batch_size, dy]
+                numer_lower = (h_l * r.unsqueeze(0)).mean(
+                    1
+                )  # [num_samples, batch_size, dy]
+                denom_lower = (
+                    h_l.mean(1) + alpha_prime + utils.eps
+                )  # [num_samples, batch_size, dy]
+                lower_batch = (
+                    mu + numer_lower / denom_lower
+                )  # [num_samples, batch_size, dy]
+                lower_batch = lower_batch.min(0)[0]  # [batch_size, dy]
+                lower.append(lower_batch)
+        # post process
+        upper = torch.cat(upper, dim=0).to("cpu").numpy()
+        lower = torch.cat(lower, dim=0).to("cpu").numpy()
+        if dataset.targets_xfm is not None:
+            upper = dataset.targets_xfm.inverse_transform(upper)
+            lower = dataset.targets_xfm.inverse_transform(lower)
+        return lower, upper

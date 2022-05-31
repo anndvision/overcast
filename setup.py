@@ -5,9 +5,9 @@ setup(
     version="0.0.0",
     description="Scalable Sensitivty and Uncertainty Analyses for Causal-Effect Estimates of Continuous Valued Interventions",
     long_description_content_type="text/markdown",
-    url="anon",
-    author="anon",
-    author_email="anon",
+    url="https://github.com/anndvision/overcast",
+    author="Andrew Jesson",
+    author_email="andrew.jesson@cs.ox.ac.uk",
     license="Apache-2.0",
     packages=find_packages(),
     install_requires=[

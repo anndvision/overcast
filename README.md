@@ -1,15 +1,47 @@
 # overcast
 
-Scalable Sensitivity and Uncertainty Analysis for Causal-Effect Estimates of Continuous-Valued Interventions
+| **[Abstract](#abstract)**
+| **[Citation](#citation)**
+| **[Installation](#installation)**
+| **[Data](#data)**
+| **[Quince Model](#quince)**
+
+Code to reproduce the results presented in [Scalable Sensitivity and Uncertainty Analyses for Causal-Effect Estimates of Continuous-Valued Interventions](https://arxiv.org/abs/2204.10022).
+
+## Abstract
+
+Estimating the effects of continuous-valued interventions from observational data is a critically important task for climate science, healthcare, and economics. Recent work focuses on designing neural network architectures and regularization functions to allow for scalable estimation of average and individual-level dose-response curves from high-dimensional, large-sample data. Such methodologies assume ignorability (observation of all confounding variables) and positivity (observation of all treatment levels for every covariate value describing a set of units), assumptions problematic in the continuous treatment regime. Scalable sensitivity and uncertainty analyses to understand the ignorance induced in causal estimates when these assumptions are relaxed are less studied. Here, we develop a continuous treatment-effect marginal sensitivity model (CMSM) and derive bounds that agree with the observed data and a researcher-defined level of hidden confounding. We introduce a scalable algorithm and uncertainty-aware deep models to derive and estimate these bounds for high-dimensional, large-sample observational data. We work in concert with climate scientists interested in the climatological impacts of human emissions on cloud properties using satellite observations from the past 15 years. This problem is known to be complicated by many unobserved confounders.
+
+## Citation
+
+If you find this code useful for your own work, please cite:
+
+```bibtex
+@article{jesson2022scalable,
+  title={Scalable Sensitivity and Uncertainty Analysis for Causal-Effect Estimates of Continuous-Valued Interventions},
+  author={Jesson, Andrew and Douglas, Alyson and Manshausen, Peter and Meinshausen, Nicolai and Stier, Philip and Gal, Yarin and Shalit, Uri},
+  journal={arXiv preprint arXiv:2204.10022},
+  year={2022}
+}
+```
 
 ## Installation
 
 ```.sh
-git clone git@github.com:anon/overcast.git
+git clone git@github.com:anndvision/overcast.git
 cd overcast
 conda env create -f environment.yml
 conda activate overcast
-pip install .
+pip install -e .
+```
+
+## Data
+
+Make a directory to store the data and download the dataset to that directory.
+
+```.sh
+mkdir data
+wget -P data/ "https://github.com/anndvision/data/raw/main/jasmin/four_outputs_liqcf_pacific.csv"
 ```
 
 ## Simulated Dose-Response Example

@@ -216,10 +216,10 @@ class _TreatmentEffectNeuralNetwork(core.AuxiliaryTaskPyTorchModel):
     def preprocess_treatment(self, treatment, treatments, xfm=None):
         raise NotImplementedError()
 
-    def predict_mean(self, dataset):
+    def predict_mean(self, dataset, batch_size=None):
         dl = data.DataLoader(
             dataset,
-            batch_size=2 * self.batch_size,
+            batch_size=2 * self.batch_size if batch_size is None else batch_size,
             shuffle=False,
             drop_last=False,
             num_workers=self.num_workers,
@@ -236,10 +236,10 @@ class _TreatmentEffectNeuralNetwork(core.AuxiliaryTaskPyTorchModel):
             )
         return mean
 
-    def sample(self, dataset, num_samples):
+    def sample(self, dataset, num_samples, batch_size=None):
         dl = data.DataLoader(
             dataset,
-            batch_size=2 * self.batch_size,
+            batch_size=2 * self.batch_size if batch_size is None else batch_size,
             shuffle=False,
             drop_last=False,
             num_workers=self.num_workers,
@@ -284,10 +284,10 @@ class _TreatmentEffectNeuralNetwork(core.AuxiliaryTaskPyTorchModel):
             )
         return y
 
-    def predict_aux_mean(self, dataset):
+    def predict_aux_mean(self, dataset, batch_size=None):
         dl = data.DataLoader(
             dataset,
-            batch_size=2 * self.batch_size,
+            batch_size=2 * self.batch_size if batch_size is None else batch_size,
             shuffle=False,
             drop_last=False,
             num_workers=self.num_workers,
@@ -304,10 +304,10 @@ class _TreatmentEffectNeuralNetwork(core.AuxiliaryTaskPyTorchModel):
             )
         return mean
 
-    def sample_aux(self, dataset, num_samples):
+    def sample_aux(self, dataset, num_samples, batch_size=None):
         dl = data.DataLoader(
             dataset,
-            batch_size=2 * self.batch_size,
+            batch_size=2 * self.batch_size if batch_size is None else batch_size,
             shuffle=False,
             drop_last=False,
             num_workers=self.num_workers,

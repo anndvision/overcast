@@ -238,7 +238,7 @@ class _TreatmentEffectAttentionNetwork(core.AuxiliaryTaskPyTorchModel):
     def preprocess_treatment(self, treatment, treatments, xfm=None):
         raise NotImplementedError()
 
-    def predict_mean(self, dataset):
+    def predict_mean(self, dataset, batch_size=None):
         dl = data.DataLoader(
             dataset,
             batch_size=1,
@@ -306,7 +306,7 @@ class _TreatmentEffectAttentionNetwork(core.AuxiliaryTaskPyTorchModel):
             )
         return y
 
-    def predict_aux_mean(self, dataset):
+    def predict_aux_mean(self, dataset, batch_size=None):
         dl = data.DataLoader(
             dataset,
             batch_size=1,

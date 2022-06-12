@@ -1,6 +1,17 @@
 import numpy as np
 
 
+def predict_mean(ensemble, dataset, batch_size=None):
+    mean_ensemble = []
+    for model in ensemble:
+        mean_ensemble.append(
+            np.expand_dims(
+                model.predict_mean(dataset=dataset, batch_size=batch_size), axis=0
+            )
+        )
+    return np.concatenate(mean_ensemble, axis=0)
+
+
 def sample_pos(ensemble, dataset, treatments, num_samples=100, batch_size=None):
     pos_ensemble = []
     for model in ensemble:

@@ -119,7 +119,7 @@ def tune_func(config):
         "num_components_treatment": tune.randint(1, 32),
         "dim_hidden": tune.qlograndint(128, 512, 128),
         "depth": tune.randint(2, 5),
-        "num_heads": tune.randint(1, 8),
+        "num_heads": tune.choice([2, 4, 8]),
         "negative_slope": tune.quniform(0.0, 0.5, 0.01),
         "beta": tune.choice([0.0]),
         "dropout_rate": tune.quniform(0.0, 0.5, 0.01),

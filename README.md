@@ -1,4 +1,4 @@
-# overcast
+# overcast ☁️
 
 | **[Abstract](#abstract)**
 | **[Citation](#citation)**
@@ -18,9 +18,10 @@ If you find this code useful for your own work, please cite:
 
 ```bibtex
 @article{jesson2022scalable,
-  title={Scalable Sensitivity and Uncertainty Analysis for Causal-Effect Estimates of Continuous-Valued Interventions},
-  author={Jesson, Andrew and Douglas, Alyson and Manshausen, Peter and Meinshausen, Nicolai and Stier, Philip and Gal, Yarin and Shalit, Uri},
-  journal={arXiv preprint arXiv:2204.10022},
+  title={Scalable Sensitivity and Uncertainty Analyses for Causal-Effect Estimates of Continuous-Valued Interventions},
+  author={Jesson, Andrew and Douglas, Alyson and Manshausen, Peter and Solal, Maëlys and Meinshausen, Nicolai and Stier, Philip and Gal, Yarin and Shalit, Uri},
+  journal={Advances in Neural Information Processing Systems},
+  volume={36},
   year={2022}
 }
 ```
